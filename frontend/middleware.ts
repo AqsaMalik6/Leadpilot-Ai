@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+// Relative import, not the "@/" alias — Vercel's Edge Function bundler fails to trace
+// that alias for middleware specifically (a known Next.js/Vercel gotcha), even though
+// it resolves fine everywhere else in the app.
+import { SESSION_COOKIE_NAME } from "./lib/constants";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/onboarding"];
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
