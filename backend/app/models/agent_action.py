@@ -21,6 +21,7 @@ ACTION_TYPE_VALUES = (
     "notified_owner",
     "updated_pipeline_stage",
     "manual_override",
+    "recorded_qualification",
 )
 
 

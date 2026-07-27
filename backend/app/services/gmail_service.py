@@ -86,6 +86,7 @@ def fetch_new_messages(creds: Credentials, last_history_id: str | None) -> tuple
         return [], current_history_id
 
     messages: list[dict] = []
+    seen_ids: set[str] = set()
     page_token = None
     try:
         while True:
@@ -95,6 +96,13 @@ def fetch_new_messages(creds: Credentials, last_history_id: str | None) -> tuple
             for record in resp.get("history", []):
                 for added in record.get("messagesAdded", []):
                     msg_id = added["message"]["id"]
+                    # Gmail's History API can legitimately list the same message under
+                    # more than one history record (e.g. a label change alongside the
+                    # add) — without this dedupe, one real inbound email gets fetched
+                    # and processed twice, producing two separate leads/replies.
+                    if msg_id in seen_ids:
+                        continue
+                    seen_ids.add(msg_id)
                     full = client.users().messages().get(userId="me", id=msg_id, format="full").execute()
                     messages.append(full)
             page_token = resp.get("nextPageToken")

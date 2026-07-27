@@ -96,6 +96,22 @@ export function useGenerateProposal(id: string) {
   });
 }
 
+export function useEditProposal(id: string) {
+  const invalidate = useInvalidateLead(id);
+  return useMutation({
+    mutationFn: async (edits: { subject?: string; body?: string }) => {
+      const res = await fetch(`/api/leads/${id}/proposal`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(edits),
+      });
+      const data = await res.json();
+      return data.proposal as Proposal;
+    },
+    onSuccess: invalidate,
+  });
+}
+
 export function useApproveProposal(id: string) {
   const invalidate = useInvalidateLead(id);
   return useMutation({

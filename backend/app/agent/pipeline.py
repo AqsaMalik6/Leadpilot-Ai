@@ -26,7 +26,7 @@ logger = logging.getLogger("leadpilot.agent.pipeline")
 from app.agent.client import groq_client, groq_configured
 from app.agent.context import AgentRunContext
 from app.agent.guardrails import block_hallucinated_claims, reject_prompt_injection
-from app.agent.tools import close_conversation, notify_sales_team, send_calendly_link
+from app.agent.tools import close_conversation, notify_sales_team, record_qualification_details, send_calendly_link
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.agent_action import AgentAction
@@ -84,6 +84,10 @@ def build_system_prompt(config: AgentConfig) -> str:
         f"Your job is to qualify this inbound lead by naturally working through these "
         f"questions over the conversation (don't interrogate — ask one at a time):\n{questions}\n\n"
         f"Rules you must always follow:\n{guardrails}\n\n"
+        f"Whenever the lead mentions their budget, timeline, what they need, their company/team "
+        f"size, or who makes the decision — call record_qualification_details immediately with "
+        f"whatever they just told you, even if it's only one field. Do this every turn it comes "
+        f"up, not just once at the end.\n\n"
         f"Once you have enough signal (roughly a score of {config.handoff_threshold_score}/100 or "
         f"higher — weigh budget fit, timeline urgency, and decision authority), call "
         f"send_calendly_link and notify_sales_team. If the lead is clearly not a fit "
@@ -185,7 +189,7 @@ async def _qualification_agent(config: AgentConfig) -> Agent[AgentRunContext]:
             else ""
         ),
         model=OpenAIChatCompletionsModel(model=settings.groq_reasoning_model, openai_client=groq_client),
-        tools=[send_calendly_link, notify_sales_team, close_conversation],
+        tools=[send_calendly_link, notify_sales_team, close_conversation, record_qualification_details],
         mcp_servers=[mcp_server] if mcp_server else [],
         input_guardrails=[reject_prompt_injection],
         output_guardrails=[block_hallucinated_claims],

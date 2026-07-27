@@ -286,6 +286,33 @@ async def generate_proposal(lead_id: str, user: User = Depends(get_current_user)
     return {"proposal": _proposal_to_dict(proposal)}
 
 
+@router.put("/{lead_id}/proposal")
+async def edit_proposal(lead_id: str, payload: dict, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Lets a manager rewrite the AI's draft before approving it — subject/body only,
+    only while still a draft (an already-sent proposal is a record of what the client
+    actually received, not something to quietly rewrite after the fact)."""
+    lead = (
+        await db.execute(select(Lead).where(Lead.id == lead_id, Lead.organization_id == user.organization_id))
+    ).scalar_one_or_none()
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    proposal = (await db.execute(select(Proposal).where(Proposal.lead_id == lead_id))).scalar_one_or_none()
+    if proposal is None:
+        raise HTTPException(status_code=400, detail="No proposal drafted yet")
+    if proposal.status != "draft":
+        raise HTTPException(status_code=400, detail="Only a draft proposal can be edited")
+
+    subject = payload.get("subject")
+    body = payload.get("body")
+    if subject is not None:
+        proposal.subject = subject
+    if body is not None:
+        proposal.body = body
+    await db.commit()
+    await db.refresh(proposal)
+    return {"proposal": _proposal_to_dict(proposal)}
+
+
 @router.post("/{lead_id}/proposal/approve")
 async def approve_proposal(lead_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Digital FTE flow step 4b: 'Manager approve kare' -> 'AI email kare' -> CRM stage

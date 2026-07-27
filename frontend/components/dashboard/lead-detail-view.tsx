@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Mail, Phone, Building2, Gauge, Sparkles, Clock, Check, XCircle, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
 import { LiveTranscript } from "@/components/shared/live-transcript";
@@ -9,8 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   useApproveProposal,
+  useEditProposal,
   useGenerateProposal,
   useLead,
   useLeadActions,
@@ -114,8 +118,20 @@ const PROPOSAL_ELIGIBLE_STAGES = new Set(["qualified", "meeting_scheduled", "pro
 function ProposalCard({ lead }: { lead: Lead }) {
   const { data: proposal, isLoading } = useProposal(lead.id);
   const generate = useGenerateProposal(lead.id);
+  const edit = useEditProposal(lead.id);
   const approve = useApproveProposal(lead.id);
   const setOutcome = useSetLeadOutcome(lead.id);
+
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (proposal && !dirty) {
+      setSubject(proposal.subject);
+      setBody(proposal.body);
+    }
+  }, [proposal, dirty]);
 
   if (!PROPOSAL_ELIGIBLE_STAGES.has(lead.pipelineStage)) return null;
 
@@ -132,35 +148,72 @@ function ProposalCard({ lead }: { lead: Lead }) {
         ) : !proposal ? (
           <>
             <p className="text-slate-500">No proposal drafted yet for this lead.</p>
-            <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
+            <Button onClick={() => generate.mutate(undefined, { onSuccess: () => setDirty(false) })} disabled={generate.isPending}>
               {generate.isPending ? "Drafting with AI…" : "Generate proposal"}
             </Button>
           </>
         ) : (
           <>
-            <div className="rounded-lg border border-line bg-slate-50 p-3">
-              <p className="font-medium text-ink-950">{proposal.subject}</p>
-              <p className="mt-2 whitespace-pre-wrap text-slate-600">{proposal.body}</p>
-            </div>
+            {proposal.status === "draft" ? (
+              <div className="space-y-2">
+                <Input value={subject} onChange={(e) => { setSubject(e.target.value); setDirty(true); }} placeholder="Subject" />
+                <Textarea
+                  value={body}
+                  onChange={(e) => { setBody(e.target.value); setDirty(true); }}
+                  rows={8}
+                  placeholder="Proposal body"
+                  className="whitespace-pre-wrap"
+                />
+              </div>
+            ) : (
+              <div className="rounded-lg border border-line bg-slate-50 p-3">
+                <p className="font-medium text-ink-950">{proposal.subject}</p>
+                <p className="mt-2 whitespace-pre-wrap text-slate-600">{proposal.body}</p>
+              </div>
+            )}
             {proposal.status === "draft" && (
               <div className="flex flex-wrap gap-2">
+                {dirty && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      edit.mutate(
+                        { subject, body },
+                        { onSuccess: () => { setDirty(false); toast({ title: "Draft saved" }); } },
+                      )
+                    }
+                    disabled={edit.isPending}
+                  >
+                    {edit.isPending ? "Saving…" : "Save changes"}
+                  </Button>
+                )}
                 <Button
-                  onClick={() =>
-                    approve.mutate(undefined, {
-                      onSuccess: (res) =>
-                        toast({
-                          title: res.sent ? "Proposal sent" : "Approved — delivery fell back to console log",
-                          description: res.sent
-                            ? `Emailed to ${lead.email}.`
-                            : "Email send failed (see server logs) — the draft is saved as approved.",
-                        }),
-                    })
-                  }
-                  disabled={approve.isPending}
+                  onClick={() => {
+                    const send = () =>
+                      approve.mutate(undefined, {
+                        onSuccess: (res) =>
+                          toast({
+                            title: res.sent ? "Proposal sent" : "Approved — delivery fell back to console log",
+                            description: res.sent
+                              ? `Emailed to ${lead.email}.`
+                              : "Email send failed (see server logs) — the draft is saved as approved.",
+                          }),
+                      });
+                    if (dirty) {
+                      edit.mutate({ subject, body }, { onSuccess: () => { setDirty(false); send(); } });
+                    } else {
+                      send();
+                    }
+                  }}
+                  disabled={approve.isPending || edit.isPending}
                 >
                   {approve.isPending ? "Sending…" : "Approve & send"}
                 </Button>
-                <Button variant="outline" onClick={() => generate.mutate()} disabled={generate.isPending}>
+                <Button
+                  variant="outline"
+                  onClick={() => generate.mutate(undefined, { onSuccess: () => setDirty(false) })}
+                  disabled={generate.isPending}
+                >
                   Regenerate draft
                 </Button>
               </div>

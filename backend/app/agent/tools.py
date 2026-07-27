@@ -86,6 +86,56 @@ async def notify_sales_team(wrapper: RunContextWrapper[AgentRunContext], summary
 
 
 @function_tool
+async def record_qualification_details(
+    wrapper: RunContextWrapper[AgentRunContext],
+    budget: str | None = None,
+    timeline: str | None = None,
+    need: str | None = None,
+    company_size: str | None = None,
+    decision_authority: bool | None = None,
+) -> str:
+    """Save qualification facts the lead has stated, as soon as they state them —
+    don't wait until the end of the conversation. Call this every time they mention
+    their budget, timeline, what they need, their company/team size, or whether
+    they're the decision-maker, even if it's only one of these at a time. This is
+    what the dashboard's Qualification panel reads from, so anything they say here
+    and you don't save is invisible to the sales team.
+
+    Args:
+        budget: Their stated budget or budget range, in their own words (e.g. "$500-1000/month"). Omit if not mentioned.
+        timeline: When they want to start or need this solved by (e.g. "this quarter", "ASAP"). Omit if not mentioned.
+        need: A short factual summary of their actual problem/use case. Omit if not mentioned.
+        company_size: Their team or company size (e.g. "15 agents", "50-person company"). Omit if not mentioned.
+        decision_authority: True if they said they're the decision-maker, False if they said someone else decides. Omit if not mentioned.
+    """
+    ctx = wrapper.context
+    lead = (await ctx.db.execute(select(Lead).where(Lead.id == ctx.lead_id))).scalar_one()
+    updated: list[str] = []
+    if budget:
+        lead.budget = budget
+        updated.append(f"budget={budget!r}")
+    if timeline:
+        lead.timeline = timeline
+        updated.append(f"timeline={timeline!r}")
+    if need:
+        lead.need = need
+        updated.append(f"need={need!r}")
+    if company_size:
+        lead.company_size = company_size
+        updated.append(f"company_size={company_size!r}")
+    if decision_authority is not None:
+        lead.decision_authority = decision_authority
+        updated.append(f"decision_authority={decision_authority}")
+
+    if not updated:
+        return "No new qualification details given — nothing saved"
+
+    _log_action(ctx, "recorded_qualification", "Recorded qualification details: " + ", ".join(updated))
+    await ctx.db.commit()
+    return "Saved: " + ", ".join(updated)
+
+
+@function_tool
 async def close_conversation(wrapper: RunContextWrapper[AgentRunContext], reason: str) -> str:
     """Politely end the conversation because the lead isn't a fit right now (out of
     budget range, wrong company size, not the decision-maker with no path to them,

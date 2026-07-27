@@ -26,12 +26,24 @@ logger = logging.getLogger("leadpilot.jobs.gmail_poll")
 POLL_INTERVAL_SECONDS = 60
 
 
-async def _latest_agent_message(db, conversation_id) -> Message | None:
-    return (
+async def _agent_message_ids(db, conversation_id) -> set:
+    return set(
+        (await db.execute(select(Message.id).where(Message.conversation_id == conversation_id, Message.role == "agent"))).scalars().all()
+    )
+
+
+async def _new_agent_messages(db, conversation_id, before_ids: set) -> list[Message]:
+    """A new Gmail lead runs fast_ack + a reasoning turn, which can produce two agent
+    messages in one pipeline call. Email isn't a live chat channel — sending them as
+    two separate emails reads as a glitchy double-reply, so this collects every agent
+    message the turn actually created and the caller sends them as one combined email,
+    keeping the dashboard transcript and what the lead actually received identical."""
+    all_msgs = (
         await db.execute(
-            select(Message).where(Message.conversation_id == conversation_id, Message.role == "agent").order_by(Message.created_at.desc())
+            select(Message).where(Message.conversation_id == conversation_id, Message.role == "agent").order_by(Message.created_at)
         )
-    ).scalars().first()
+    ).scalars().all()
+    return [m for m in all_msgs if m.id not in before_ids]
 
 
 async def _process_account(db, account: GmailAccount) -> int:
@@ -77,10 +89,12 @@ async def _process_account(db, account: GmailAccount) -> int:
 
         if existing_lead:
             conversation = (await db.execute(select(Conversation).where(Conversation.lead_id == existing_lead.id))).scalar_one()
+            before_ids = await _agent_message_ids(db, conversation.id)
             await process_incoming_reply(existing_lead.id, parsed["text"])
-            reply_msg = await _latest_agent_message(db, conversation.id)
-            if reply_msg:
-                send_reply(creds, parsed["from_email"], f"Re: {parsed['subject']}", reply_msg.content, parsed["thread_id"])
+            new_msgs = await _new_agent_messages(db, conversation.id, before_ids)
+            if new_msgs:
+                combined = "\n\n".join(m.content for m in new_msgs)
+                send_reply(creds, parsed["from_email"], f"Re: {parsed['subject']}", combined, parsed["thread_id"])
         else:
             lead = Lead(
                 organization_id=account.organization_id,
@@ -98,10 +112,12 @@ async def _process_account(db, account: GmailAccount) -> int:
             db.add(Message(conversation_id=conversation.id, role="lead", content=parsed["text"], channel="gmail", message_metadata={"gmail_thread_id": parsed["thread_id"]}))
             await db.commit()
 
+            before_ids = await _agent_message_ids(db, conversation.id)
             await process_new_lead(lead.id)
-            reply_msg = await _latest_agent_message(db, conversation.id)
-            if reply_msg:
-                send_reply(creds, parsed["from_email"], f"Re: {parsed['subject']}", reply_msg.content, parsed["thread_id"])
+            new_msgs = await _new_agent_messages(db, conversation.id, before_ids)
+            if new_msgs:
+                combined = "\n\n".join(m.content for m in new_msgs)
+                send_reply(creds, parsed["from_email"], f"Re: {parsed['subject']}", combined, parsed["thread_id"])
 
         processed += 1
 

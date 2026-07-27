@@ -67,6 +67,17 @@ export async function generateProposal(id: string): Promise<Proposal> {
   return ProposalSchema.parse(data.proposal);
 }
 
+export async function editProposal(id: string, edits: { subject?: string; body?: string }): Promise<Proposal> {
+  const res = await backendFetch(`/api/leads/${id}/proposal`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(edits),
+  });
+  if (!res.ok) throw new Error(`Failed to save proposal edits for lead ${id} (${res.status})`);
+  const data = await res.json();
+  return ProposalSchema.parse(data.proposal);
+}
+
 export async function approveProposal(id: string): Promise<{ ok: true; sent: boolean; proposal: Proposal }> {
   const res = await backendFetch(`/api/leads/${id}/proposal/approve`, { method: "POST" });
   if (!res.ok) throw new Error(`Failed to approve proposal for lead ${id} (${res.status})`);
