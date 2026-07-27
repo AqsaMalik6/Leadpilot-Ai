@@ -1,0 +1,25 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pydantic==2.13.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+argon2-cffi==23.1.0
+itsdangerous==2.2.0
+cryptography==43.0.3
+httpx==0.28.1
+# Pinned to this exact pair: openai-agents<0.18 has a bug where its internal
+# InputTokensDetails default (agents/usage.py) omits cache_write_tokens, which
+# openai>=2.x's Pydantic model requires — breaks parsing usage from ANY Chat
+# Completions response (Groq included). 0.18.3 fixes it; keep these two in lockstep.
+openai==2.46.0
+openai-agents==0.18.3
+celery==5.4.0
+redis==5.2.1
+resend==2.5.1
+python-multipart==0.0.20
+# SKILL-DIGITAL-FTE-UPGRADE.md §2 — Gmail integration (installed-app OAuth flow + History API polling)
+google-api-python-client==2.154.0
+google-auth-oauthlib==1.2.1

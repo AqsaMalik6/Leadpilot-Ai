@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 165 20% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 165 20% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 165 20% 6%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface text-ink-950 antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Single site-wide focus style (SKILL-FRONTEND.md §2.7) */
+  :focus-visible {
+    outline: none;
+    @apply ring-2 ring-signal-500 ring-offset-2 ring-offset-surface rounded-sm;
+  }
+
+  .dark-surface :focus-visible {
+    @apply ring-offset-ink-950;
+  }
+
+  /* Respect prefers-reduced-motion site-wide (§2.7) */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .container-lp {
+    @apply mx-auto w-full max-w-container px-6 lg:px-8;
+  }
+
+  .container-lp-lg {
+    @apply mx-auto w-full max-w-container-lg px-6 lg:px-8;
+  }
+
+  .section-y {
+    @apply py-16 md:py-24;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .skip-link {
+    @apply fixed left-4 top-4 z-[100] -translate-y-24 rounded-md bg-ink-950 px-4 py-2 text-sm font-medium text-white transition-transform focus:translate-y-0;
+  }
+}

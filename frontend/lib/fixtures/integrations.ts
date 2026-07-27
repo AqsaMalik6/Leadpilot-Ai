@@ -1,0 +1,66 @@
+import { IntegrationSchema, type Integration } from "@/lib/schema";
+
+const raw: Integration[] = [
+  {
+    id: "int_website_form",
+    provider: "website_form",
+    label: "Website form",
+    description: "Embed a snippet on your site to route form submissions straight to LeadPilot.",
+    logoSrc: null,
+    status: "connected",
+    connectedAt: "2026-06-02T10:00:00Z",
+    configHref: "/dashboard/integrations",
+  },
+  {
+    id: "int_whatsapp",
+    provider: "whatsapp",
+    label: "WhatsApp Business",
+    description: "Reply to inbound WhatsApp inquiries the moment they land.",
+    logoSrc: null,
+    status: "connected",
+    connectedAt: "2026-06-04T09:30:00Z",
+    configHref: "/dashboard/integrations",
+  },
+  {
+    id: "int_email",
+    provider: "email",
+    label: "Email inbox",
+    description: "Forward or connect a shared inbox for LeadPilot to monitor and reply from.",
+    logoSrc: null,
+    status: "connected",
+    connectedAt: "2026-06-02T10:05:00Z",
+    configHref: "/dashboard/integrations",
+  },
+  {
+    id: "int_calendly",
+    provider: "calendly",
+    label: "Calendly",
+    description: "Let qualified leads book directly onto your team's calendar.",
+    logoSrc: null,
+    status: "connected",
+    connectedAt: "2026-06-05T14:00:00Z",
+    configHref: "/dashboard/integrations",
+  },
+  {
+    id: "int_slack",
+    provider: "slack",
+    label: "Slack",
+    description: "Get a Slack alert the moment a lead is qualified or booked.",
+    logoSrc: null,
+    status: "not_connected",
+    connectedAt: null,
+    configHref: "/dashboard/integrations",
+  },
+  {
+    id: "int_hubspot",
+    provider: "hubspot",
+    label: "HubSpot CRM",
+    description: "Sync qualified leads and transcripts directly into HubSpot.",
+    logoSrc: null,
+    status: "not_connected",
+    connectedAt: null,
+    configHref: "/dashboard/integrations",
+  },
+];
+
+export const integrationsFixture = IntegrationSchema.array().parse(raw);

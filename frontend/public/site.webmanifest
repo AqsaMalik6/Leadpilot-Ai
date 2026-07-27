@@ -1,0 +1,10 @@
+{
+  "name": "LeadPilot AI",
+  "short_name": "LeadPilot",
+  "description": "Your AI SDR replies to every lead in under 10 seconds.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F0E",
+  "theme_color": "#0B0F0E",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

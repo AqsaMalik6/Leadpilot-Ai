@@ -1,0 +1,23 @@
+Letting software reply to real leads autonomously — without a human reviewing each message before it sends — only works if the boundaries around it are explicit, tested, and enforced consistently. We treat guardrails as core product configuration, not a footnote.
+
+## What a guardrail actually constrains
+
+For LeadPilot, guardrails fall into three categories:
+
+1. **Claims the agent must never make.** No legal, medical, or financial guarantees; no pricing outside published tiers; no promises about outcomes it can't control.
+2. **Situations that escalate immediately to a human.** Expressed frustration, a refund or cancellation request, or any message the agent's confidence scoring flags as ambiguous — these route to a human rather than getting an agent-generated reply.
+3. **Identity honesty.** The agent introduces itself as an AI assistant on first contact and never claims to be a human sales rep, regardless of how the conversation evolves.
+
+## Why a handoff threshold matters more than a perfect script
+
+No qualifying conversation script covers every real conversation a lead will have. Rather than trying to anticipate every edge case, LeadPilot uses a configurable handoff threshold: once a conversation's qualification score or confidence drops below a level you set, control passes to a human — with the full transcript already in front of them, not a cold handoff.
+
+This means the guardrail isn't "the agent must handle everything perfectly." It's "the agent must know what it doesn't know, and hand off before it guesses."
+
+## Guardrails are configuration, not a black box
+
+Every guardrail rule in LeadPilot — the claims list, the escalation triggers, the handoff threshold — lives in your agent configuration, not in an opaque model behavior you have to trust blindly. You can read exactly what boundaries are active, and change them, the same way you'd review any other piece of your sales process.
+
+## What this means for trust
+
+An autonomous agent talking to real prospects on your behalf is a meaningful responsibility. Guardrails are how that responsibility stays legible — to your team, and to the people your agent talks to.

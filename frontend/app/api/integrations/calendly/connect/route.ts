@@ -1,0 +1,19 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { backendFetch } from "@/lib/backend-fetch";
+
+const BodySchema = z.object({ calendlyUrl: z.string().url() });
+
+export async function POST(request: Request) {
+  const parsed = BodySchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, errors: parsed.error.flatten() }, { status: 400 });
+  }
+  const res = await backendFetch("/api/integrations/calendly/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(parsed.data),
+  });
+  if (!res.ok) return NextResponse.json({ ok: false }, { status: res.status });
+  return NextResponse.json({ ok: true, integration: await res.json() });
+}

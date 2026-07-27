@@ -1,0 +1,78 @@
+import { PricingTierSchema, type PricingTier } from "@/lib/schema";
+
+const raw: PricingTier[] = [
+  {
+    id: "starter",
+    name: "Starter",
+    tagline: "For a single team testing AI-led response",
+    monthlyPriceCents: 19900,
+    annualPriceCents: 190800,
+    leadsIncludedPerMonth: 250,
+    featureBullets: [
+      "1 lead channel (website form, WhatsApp, or email)",
+      "Instant reply + qualification",
+      "Calendly booking handoff",
+      "Live dashboard",
+      "Email support",
+    ],
+    highlighted: false,
+    ctaLabel: "Start free trial",
+    ctaHref: "/signup?plan=starter",
+  },
+  {
+    id: "growth",
+    name: "Growth",
+    tagline: "For teams that need every channel covered",
+    monthlyPriceCents: 59900,
+    annualPriceCents: 574800,
+    leadsIncludedPerMonth: 1000,
+    featureBullets: [
+      "All lead channels (website, WhatsApp, email)",
+      "Custom qualifying questions & guardrails",
+      "Slack + email notifications",
+      "CRM integration (HubSpot)",
+      "Priority support",
+    ],
+    highlighted: true,
+    ctaLabel: "Start free trial",
+    ctaHref: "/signup?plan=growth",
+  },
+  {
+    id: "scale",
+    name: "Scale",
+    tagline: "For multi-location or high-volume teams",
+    monthlyPriceCents: 129900,
+    annualPriceCents: 1247000,
+    leadsIncludedPerMonth: 4000,
+    featureBullets: [
+      "Everything in Growth",
+      "Multiple agent personas / brands",
+      "Team roles & permissions",
+      "Custom handoff rules per location",
+      "Dedicated onboarding specialist",
+    ],
+    highlighted: false,
+    ctaLabel: "Start free trial",
+    ctaHref: "/signup?plan=scale",
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    tagline: "For organizations with custom requirements",
+    monthlyPriceCents: null,
+    annualPriceCents: null,
+    leadsIncludedPerMonth: null,
+    featureBullets: [
+      "Unlimited leads",
+      "Custom integrations & SLAs",
+      "Dedicated success manager",
+      "Security review support",
+      "Custom contract & invoicing",
+    ],
+    highlighted: false,
+    ctaLabel: "Talk to sales",
+    ctaHref: "/contact",
+  },
+];
+
+export const pricingTiersFixture = PricingTierSchema.array().parse(raw);
