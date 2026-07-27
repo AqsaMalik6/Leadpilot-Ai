@@ -77,8 +77,8 @@ export function NotificationRulesForm({ initialRules }: { initialRules?: Record<
         Save notification rules
       </Button>
       <p className="text-xs text-slate-500">
-        Email toggles are enforced live — turning off "Lead qualified" here really stops that email. Slack
-        toggles are saved but not enforced yet since Slack isn't connected (see Integrations).
+        Email toggles are enforced live — turning off &ldquo;Lead qualified&rdquo; here really stops that email.
+        Slack toggles are saved but not enforced yet since Slack isn&apos;t connected (see Integrations).
       </p>
     </div>
   );
