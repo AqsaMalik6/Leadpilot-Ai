@@ -125,7 +125,7 @@ function MeetingEndedBanner({ lead }: { lead: Lead }) {
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <div>
-            <p className="font-medium text-ink-950">Meeting ended — what's the outcome?</p>
+            <p className="font-medium text-ink-950">Meeting ended — what&apos;s the outcome?</p>
             <p className="text-sm text-slate-600">
               The scheduled meeting with {lead.name} has passed. Generate a proposal to move forward, or reject this lead.
             </p>
