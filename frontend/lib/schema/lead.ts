@@ -58,6 +58,7 @@ export const LeadSchema = z.object({
   email: z.string().nullable(),
   phone: z.string().nullable(),
   channel: ChannelSchema,
+  source: z.enum(["inbound", "outbound"]).default("inbound"),
   status: LeadStatusSchema,
   createdAt: z.string(),
   respondedAt: z.string().nullable(),
@@ -72,12 +73,20 @@ export const LeadSchema = z.object({
   temperature: TemperatureSchema,
   followUpCount: z.number(),
   nextFollowUpAt: z.string().nullable(),
+  meetingScheduledAt: z.string().nullable(),
+  meetingDurationMinutes: z.number().nullable(),
+  meetingTranscript: z.string().nullable(),
+  meetingEndedPendingOutcome: z.boolean(),
 });
 export type Lead = z.infer<typeof LeadSchema>;
 
 export const LeadListItemSchema = LeadSchema.omit({
   transcript: true,
   qualification: true,
+  meetingScheduledAt: true,
+  meetingDurationMinutes: true,
+  meetingTranscript: true,
+  meetingEndedPendingOutcome: true,
 }).extend({
   qualificationScore: z.number().min(0).max(100).nullable(),
 });

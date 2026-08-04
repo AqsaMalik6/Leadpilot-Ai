@@ -18,7 +18,12 @@ import uuid
 from datetime import datetime, timezone
 
 from agents import Agent, OpenAIChatCompletionsModel, Runner
-from agents.mcp import MCPServerStdio
+import openai
+try:
+    from agents.mcp import MCPServerStdio
+except ImportError:  # agents.mcp may be missing in this environment
+    MCPServerStdio = None  # type: ignore
+
 from sqlalchemy import select
 
 logger = logging.getLogger("leadpilot.agent.pipeline")
@@ -26,7 +31,7 @@ logger = logging.getLogger("leadpilot.agent.pipeline")
 from app.agent.client import groq_client, groq_configured
 from app.agent.context import AgentRunContext
 from app.agent.guardrails import block_hallucinated_claims, reject_prompt_injection
-from app.agent.tools import close_conversation, notify_sales_team, record_qualification_details, send_calendly_link
+from app.agent.tools import close_conversation, notify_sales_team, record_qualification_details, record_qualification_details_args, send_calendly_link
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models.agent_action import AgentAction
@@ -47,6 +52,9 @@ _messaging_mcp_lock = asyncio.Lock()
 
 
 async def _get_messaging_mcp_server() -> MCPServerStdio | None:
+    if MCPServerStdio is None:
+        logger.warning("MCPServerStdio not available; messaging MCP will be disabled.")
+        return None
     global _messaging_mcp_server
     async with _messaging_mcp_lock:
         if _messaging_mcp_server is not None:
@@ -75,10 +83,22 @@ _ROLE_TO_AGENT_INPUT = {"lead": "user", "agent": "assistant", "system": "system"
 _MALFORMED_TOOL_CALL_RE = re.compile(r"<function[=(]|</function>")
 
 
-def build_system_prompt(config: AgentConfig) -> str:
+def build_system_prompt(config: AgentConfig, is_first_turn: bool = True) -> str:
     questions = "\n".join(f"- ({q['field']}) {q['prompt']}" for q in config.qualifying_questions)
     guardrails = "\n".join(f"- {g}" for g in config.guardrails)
     override = f"\n\nAdditional instructions:\n{config.system_prompt_override}" if config.system_prompt_override else ""
+    # The persona description itself instructs introducing itself by name (e.g.
+    # "introduces itself as X's AI assistant") — correct for the very first reply, but
+    # this same prompt is reused on every later turn too. Without this override, the
+    # model re-introduces itself on every single reply in the conversation, which reads
+    # as broken/repetitive rather than a real ongoing conversation.
+    continuation_note = (
+        ""
+        if is_first_turn
+        else "\n\nThis is a CONTINUING conversation — the lead already knows who you are from your first "
+        "message. Do not reintroduce yourself or restate your persona again; just respond naturally to "
+        "what they just said."
+    )
     return (
         f"You are {config.persona}\n\n"
         f"Your job is to qualify this inbound lead by naturally working through these "
@@ -99,6 +119,7 @@ def build_system_prompt(config: AgentConfig) -> str:
         f"Calendly link' — the lead does not care what you did internally, they need an "
         f"actual message). If you just called send_calendly_link, your reply must include the "
         f"literal booking link so they can click it."
+        f"{continuation_note}"
         f"{override}"
     )
 
@@ -177,11 +198,11 @@ async def classify_is_lead(email_text: str) -> bool:
     return is_lead
 
 
-async def _qualification_agent(config: AgentConfig) -> Agent[AgentRunContext]:
+async def _qualification_agent(config: AgentConfig, is_first_turn: bool = True) -> Agent[AgentRunContext]:
     mcp_server = await _get_messaging_mcp_server()
     return Agent[AgentRunContext](
         name="qualifier",
-        instructions=build_system_prompt(config)
+        instructions=build_system_prompt(config, is_first_turn=is_first_turn)
         + (
             "\n\nYou also have send_whatsapp and send_email_message tools (via MCP) if you need to "
             "reach the lead on a channel other than this conversation — only use them if explicitly relevant."
@@ -189,7 +210,7 @@ async def _qualification_agent(config: AgentConfig) -> Agent[AgentRunContext]:
             else ""
         ),
         model=OpenAIChatCompletionsModel(model=settings.groq_reasoning_model, openai_client=groq_client),
-        tools=[send_calendly_link, notify_sales_team, close_conversation, record_qualification_details],
+        tools=[send_calendly_link, notify_sales_team, close_conversation, record_qualification_details, record_qualification_details_args],
         mcp_servers=[mcp_server] if mcp_server else [],
         input_guardrails=[reject_prompt_injection],
         output_guardrails=[block_hallucinated_claims],
@@ -219,20 +240,32 @@ async def _history_with_memory(db, conversation: Conversation) -> list[dict]:
     recent = full_history[-_MEMORY_SUMMARY_TRIGGER_MESSAGES:]
     transcript_text = "\n".join(f"{m['role']}: {m['content']}" for m in to_summarize)
     prior = f"Prior summary: {conversation.memory_summary}\n\n" if conversation.memory_summary else ""
-    response = await groq_client.chat.completions.create(
-        model=settings.groq_fast_model,
-        messages=[
-            {
-                "role": "system",
-                "content": "Summarize this lead conversation history in 2-3 sentences — facts and stated needs only, no commentary.",
-            },
-            {"role": "user", "content": f"{prior}{transcript_text}"},
-        ],
-        max_tokens=150,
-        temperature=0.2,
-    )
-    conversation.memory_summary = response.choices[0].message.content or conversation.memory_summary
-    await db.commit()
+    try:
+        response = await groq_client.chat.completions.create(
+            model=settings.groq_fast_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Summarize this lead conversation history in 2-3 sentences — facts and stated needs only, no commentary.",
+                },
+                {"role": "user", "content": f"{prior}{transcript_text}"},
+            ],
+            max_tokens=150,
+            temperature=0.2,
+        )
+        conversation.memory_summary = response.choices[0].message.content or conversation.memory_summary
+        await db.commit()
+    except Exception:
+        # This is purely a cost/context-size optimization for long threads — a failure
+        # here (bad key, rate limit, network blip) must never take down the actual
+        # reply. Fall back to the full, unsummarized history rather than let the
+        # exception propagate: it used to escape all the way up through
+        # process_incoming_reply's own try/except, which just logs and swallows it —
+        # leaving the lead with zero reply and not even the usual fallback message
+        # (a real, observed bug: long-running conversations went completely silent
+        # exactly when they crossed this threshold under a flaky/invalid Groq key).
+        logger.warning("Memory summarization failed for conversation_id=%s — using full history instead", conversation.id, exc_info=True)
+        return full_history
     return [{"role": "system", "content": f"[Earlier conversation summary] {conversation.memory_summary}"}] + recent
 
 
@@ -254,8 +287,11 @@ async def _fallback_customer_message(db, lead_id: uuid.UUID) -> str | None:
     return None
 
 
+_REASONING_FAILURE_CUSTOMER_MESSAGE = "I'm reviewing your requirements and will follow up shortly."
+
+
 async def _run_reasoning_turn(
-    db, org_id: uuid.UUID, lead_id: uuid.UUID, conversation_id: uuid.UUID, config: AgentConfig, history: list[dict]
+    db, org_id: uuid.UUID, lead_id: uuid.UUID, conversation_id: uuid.UUID, config: AgentConfig, history: list[dict], is_first_turn: bool = True
 ) -> str | None:
     if not groq_configured():
         return None
@@ -280,7 +316,7 @@ async def _run_reasoning_turn(
     last_exc: Exception | None = None
     for attempt in range(2):
         try:
-            agent = await _qualification_agent(config)
+            agent = await _qualification_agent(config, is_first_turn=is_first_turn)
             result = await asyncio.wait_for(
                 Runner.run(agent, history, context=ctx, max_turns=6),
                 timeout=45,
@@ -302,6 +338,11 @@ async def _run_reasoning_turn(
             logger.error("Reasoning turn TIMED OUT after 45s for lead_id=%s (attempt %d)", lead_id, attempt + 1)
             last_exc = None
             break
+        except openai.RateLimitError as exc:  # specific handling for token rate limits
+            # Log and pause briefly before giving up; return a polite placeholder reply.
+            logger.warning("Rate limit reached during reasoning turn for lead_id=%s: %s", lead_id, exc)
+            # Optionally could implement exponential backoff; for now return a friendly message.
+            return "I'm currently experiencing high load, but will get back to you shortly."
         except Exception as exc:  # guardrail tripwires, model/tooling errors
             logger.warning("Reasoning turn attempt %d failed for lead_id=%s: %s", attempt + 1, lead_id, exc)
             last_exc = exc
@@ -312,8 +353,12 @@ async def _run_reasoning_turn(
 
     if last_exc is not None:
         logger.exception("Reasoning turn failed for lead_id=%s after retry", lead_id, exc_info=last_exc)
-        return "[agent pipeline error, human review needed — see server logs]"
-    return "[agent pipeline timed out, human review needed — see server logs]"
+    else:
+        logger.error("Reasoning turn timed out for lead_id=%s — see above", lead_id)
+    # Never show the raw error/timeout string to a real lead — this is a genuine
+    # failure worth investigating in server logs, but the customer just needs a
+    # normal-sounding holding reply, not a stack-trace-shaped message.
+    return _REASONING_FAILURE_CUSTOMER_MESSAGE
 
 
 def _ensure_calendly_link_in_reply(lead: Lead, reasoning_text: str, previous_calendly_url: str | None) -> str:
@@ -362,7 +407,7 @@ async def process_new_lead(lead_id: uuid.UUID) -> None:
             await publish_event(lead.organization_id, {"type": "new_lead", "lead": _lead_list_item(lead)})
 
             previous_calendly_url = lead.calendly_booking_url
-            reasoning_text = await _run_reasoning_turn(db, lead.organization_id, lead.id, conversation.id, config, initial_history)
+            reasoning_text = await _run_reasoning_turn(db, lead.organization_id, lead.id, conversation.id, config, initial_history, is_first_turn=True)
             if reasoning_text:
                 reasoning_text = _ensure_calendly_link_in_reply(lead, reasoning_text, previous_calendly_url)
                 db.add(
@@ -382,17 +427,24 @@ async def process_new_lead(lead_id: uuid.UUID) -> None:
         logger.exception("process_new_lead crashed for lead_id=%s", lead_id)
 
 
-async def process_incoming_reply(lead_id: uuid.UUID, text: str) -> None:
+async def process_incoming_reply(lead_id: uuid.UUID, text: str, metadata: dict | None = None) -> None:
     """Entry point for a genuine follow-up turn on an existing conversation — a real
     WhatsApp/email reply, or a future chat-box demo UI. Not exercised by today's
-    one-shot /demo form (see module docstring)."""
+    one-shot /demo form (see module docstring).
+
+    This is the ONLY place that persists the inbound message for a continuation turn —
+    callers (gmail_poll.py, whatsapp_internal.py) must NOT also add their own Message
+    row first, or the same reply shows up twice in the conversation transcript (a real
+    bug this fixed: WhatsApp's inbound handler used to pre-add the message itself, then
+    this function added it again). Pass channel-specific dedup metadata (e.g.
+    wa_message_id/gmail_message_id) via `metadata` so it lands on this one row."""
     try:
         async with SessionLocal() as db:
             lead = (await db.execute(select(Lead).where(Lead.id == lead_id))).scalar_one()
             conversation = (await db.execute(select(Conversation).where(Conversation.lead_id == lead_id))).scalar_one()
             config = (await db.execute(select(AgentConfig).where(AgentConfig.organization_id == lead.organization_id))).scalar_one()
 
-            db.add(Message(conversation_id=conversation.id, role="lead", content=text, channel=lead.source if lead.source != "demo_sandbox" else "website_form", message_metadata={}))
+            db.add(Message(conversation_id=conversation.id, role="lead", content=text, channel=lead.source if lead.source != "demo_sandbox" else "website_form", message_metadata=metadata or {}))
             lead.last_inbound_at = datetime.now(timezone.utc)
             # A genuine reply resets any pending follow-up sequence — the lead is
             # engaged again, so the follow_up_sweep job (§3) shouldn't chase them further
@@ -402,7 +454,7 @@ async def process_incoming_reply(lead_id: uuid.UUID, text: str) -> None:
 
             history = await _history_with_memory(db, conversation)
             previous_calendly_url = lead.calendly_booking_url
-            reasoning_text = await _run_reasoning_turn(db, lead.organization_id, lead.id, conversation.id, config, history)
+            reasoning_text = await _run_reasoning_turn(db, lead.organization_id, lead.id, conversation.id, config, history, is_first_turn=False)
             if reasoning_text:
                 reasoning_text = _ensure_calendly_link_in_reply(lead, reasoning_text, previous_calendly_url)
                 db.add(
@@ -414,7 +466,15 @@ async def process_incoming_reply(lead_id: uuid.UUID, text: str) -> None:
                         message_metadata={"model": "groq", "stage": "reasoning"},
                     )
                 )
-                lead.last_outbound_at = datetime.now(timezone.utc)
+                # This commit was missing entirely — db.refresh() below only flushes
+                # the pending INSERT within the current transaction, it does not commit
+                # it. Without an explicit commit, closing this function's own SessionLocal
+                # rolls the whole transaction back, so the reply was written and then
+                # silently discarded on every continuation turn (real, confirmed bug: the
+                # lead's message would save, but the agent's reply never reached the
+                # database at all — not even the fallback text — so callers like
+                # whatsapp_internal.py's combined_new_reply_text (reading via a SEPARATE
+                # session) always saw nothing new and never sent anything back).
                 await db.commit()
                 await db.refresh(lead)
                 await publish_event(lead.organization_id, {"type": "status_change", "lead_id": str(lead.id), "status": lead.status})

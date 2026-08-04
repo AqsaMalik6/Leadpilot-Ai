@@ -11,6 +11,7 @@ export const AgentActionTypeSchema = z.enum([
   "notified_owner",
   "updated_pipeline_stage",
   "manual_override",
+  "recorded_qualification",
 ]);
 export type AgentActionType = z.infer<typeof AgentActionTypeSchema>;
 

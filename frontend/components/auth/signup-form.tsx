@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,6 +15,8 @@ import { AlertCircle } from "lucide-react";
 
 export function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const plan = searchParams.get("plan");
   const [serverError, setServerError] = useState<string | null>(null);
   const {
     register,
@@ -36,7 +38,7 @@ export function SignupForm() {
       );
       return;
     }
-    router.push("/onboarding");
+    router.push(plan ? `/checkout?plan=${encodeURIComponent(plan)}` : "/checkout");
     router.refresh();
   }
 
@@ -80,7 +82,7 @@ export function SignupForm() {
         </form>
         <p className="mt-6 text-center text-sm text-slate-500">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-signal-600 hover:underline">
+          <Link href={plan ? `/login?plan=${encodeURIComponent(plan)}` : "/login"} className="font-medium text-signal-600 hover:underline">
             Log in
           </Link>
         </p>

@@ -51,6 +51,29 @@ class Settings(BaseSettings):
     # no-ops until then, same honest "real but needs your keys" pattern as WhatsApp/Resend.
     gmail_oauth_client_id: str = ""
     gmail_oauth_client_secret: str = ""
+    # SKILL-MULTI-TENANT-CONNECT.md — self-serve web OAuth connect flow. Must be a
+    # "Web application" OAuth client in Google Cloud Console (the desktop-app client
+    # above is a different, incompatible client type) and must exactly match an
+    # "Authorized redirect URI" registered there. Empty -> /start returns a clear
+    # config error instead of a broken redirect.
+    gmail_redirect_uri: str = ""
+    # Where the callback sends the customer's browser back to after connecting.
+    frontend_base_url: str = "http://localhost:3000"
+
+    # SKILL-MULTI-TENANT-CONNECT.md — WhatsApp self-serve connect via the unofficial
+    # linked-device protocol (Baileys sidecar), not Meta's official Business API.
+    # Shared secret authenticating sidecar<->backend internal calls (never exposed
+    # publicly). Empty -> internal endpoints reject everything (fails closed).
+    whatsapp_sidecar_shared_secret: str = ""
+    whatsapp_sidecar_url: str = "http://127.0.0.1:8020"
+
+    # SKILL-OUTBOUND.md — free outbound lead prospecting. OSM Overpass needs no key at
+    # all. Geoapify (free daily-quota tier, no card) and GitHub (free personal access
+    # token) are optional — empty -> that source is skipped with a clear log line
+    # rather than a hard failure, same "real but needs your keys" pattern as
+    # WhatsApp/Resend/Gmail above.
+    geoapify_api_key: str = ""
+    github_token: str = ""
 
     # Billing — dummy/mock only, per product owner: no real Stripe account exists.
     # Any plan the user submits is accepted; nothing here ever calls the real Stripe API.

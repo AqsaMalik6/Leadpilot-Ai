@@ -59,6 +59,14 @@ class Lead(CamelModel):
     temperature: Temperature
     follow_up_count: int
     next_follow_up_at: datetime | None = None
+    meeting_scheduled_at: datetime | None = None
+    meeting_duration_minutes: int | None = None
+    meeting_transcript: str | None = None
+    # Computed (not stored) — see app/routers/leads.py's _lead_to_schema. True once the
+    # scheduled meeting's end time + a buffer has passed and nobody has recorded an
+    # outcome yet (pipeline_stage is still meeting_scheduled), driving the lead detail
+    # page's "Meeting ended — generate a proposal or reject?" banner.
+    meeting_ended_pending_outcome: bool = False
 
 
 class LeadListItem(CamelModel):

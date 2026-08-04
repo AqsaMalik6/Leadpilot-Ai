@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // it resolves fine everywhere else in the app.
 import { SESSION_COOKIE_NAME } from "./lib/constants";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/onboarding"];
+const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/checkout"];
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // Real auth gate: verifies the session_id cookie against the backend (not just
@@ -45,5 +45,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/onboarding/:path*"],
+  matcher: ["/dashboard/:path*", "/onboarding/:path*", "/checkout/:path*"],
 };

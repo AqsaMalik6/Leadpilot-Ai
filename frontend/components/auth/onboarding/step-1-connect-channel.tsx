@@ -1,42 +1,53 @@
 "use client";
 
-import { Globe, MessageCircle, Mail, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { IntegrationCard } from "@/components/dashboard/integration-card";
+import { WhatsAppConnectCard } from "@/components/dashboard/whatsapp-connect-card";
+import { Switch } from "@/components/ui/switch";
+import type { Integration } from "@/lib/schema";
 
-const CHANNELS = [
-  { id: "website_form", label: "Website form", description: "Embed a snippet to route form submissions to LeadPilot.", icon: Globe },
-  { id: "whatsapp", label: "WhatsApp Business", description: "Reply to inbound WhatsApp messages instantly.", icon: MessageCircle },
-  { id: "email", label: "Email inbox", description: "Forward or connect a shared inbox.", icon: Mail },
-];
+export function Step1ConnectChannel({
+  gmailReplyMode,
+  onGmailReplyModeChange,
+}: {
+  gmailReplyMode: "auto_send" | "review_first";
+  onGmailReplyModeChange: (mode: "auto_send" | "review_first") => void;
+}) {
+  const [integrations, setIntegrations] = useState<Integration[] | null>(null);
 
-export function Step1ConnectChannel({ value, onChange }: { value: string; onChange: (channel: string) => void }) {
+  useEffect(() => {
+    fetch("/api/integrations")
+      .then((res) => res.json())
+      .then((data) => setIntegrations(data.integrations ?? []))
+      .catch(() => setIntegrations([]));
+  }, []);
+
+  const gmail = integrations?.find((i) => i.provider === "gmail");
+  const whatsapp = integrations?.find((i) => i.provider === "whatsapp_qr");
+
   return (
     <div>
       <h2 className="font-display text-xl font-semibold text-ink-950">Connect your first lead channel</h2>
       <p className="mt-1 text-sm text-slate-500">
-        You can connect more channels later from Dashboard → Integrations.
+        Connect as many as you want — none are required to continue, and you can always add more later from Dashboard → Integrations.
       </p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        {CHANNELS.map((channel) => (
-          <button
-            key={channel.id}
-            type="button"
-            onClick={() => onChange(channel.id)}
-            className={cn(
-              "relative rounded-xl border p-4 text-left transition-colors",
-              value === channel.id ? "border-signal-500 bg-signal-500/5" : "border-line hover:bg-surface-2",
-            )}
-          >
-            {value === channel.id && (
-              <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-signal-500 text-ink-950">
-                <Check className="h-3 w-3" />
-              </span>
-            )}
-            <channel.icon className="h-5 w-5 text-signal-600" />
-            <div className="mt-2 text-sm font-medium text-ink-950">{channel.label}</div>
-            <div className="mt-1 text-xs text-slate-500">{channel.description}</div>
-          </button>
-        ))}
+      <div className="mt-6 space-y-4">
+        {gmail && <IntegrationCard integration={gmail} />}
+        {gmail?.status === "connected" && (
+          <div className="flex items-center justify-between rounded-lg border border-line p-4">
+            <div>
+              <div className="text-sm font-medium text-ink-950">Review Gmail replies before they send</div>
+              <div className="text-xs text-slate-500">
+                Off: replies send automatically. On: each draft waits in Dashboard → Integrations for your approval first.
+              </div>
+            </div>
+            <Switch
+              checked={gmailReplyMode === "review_first"}
+              onCheckedChange={(checked) => onGmailReplyModeChange(checked ? "review_first" : "auto_send")}
+            />
+          </div>
+        )}
+        {whatsapp && <WhatsAppConnectCard integration={whatsapp} />}
       </div>
     </div>
   );

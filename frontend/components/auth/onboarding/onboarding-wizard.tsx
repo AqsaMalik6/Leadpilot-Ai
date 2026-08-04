@@ -18,11 +18,10 @@ export function OnboardingWizard({ initialConfig }: { initialConfig: AgentConfig
   const [step, setStep] = useState(1);
   const [loaded, setLoaded] = useState(false);
 
-  const [channel, setChannel] = useState("website_form");
   const [questions, setQuestions] = useState(initialConfig.qualifyingQuestions);
   const [calendlyUrl, setCalendlyUrl] = useState(initialConfig.calendlyUrl ?? "");
-  const [slackEnabled, setSlackEnabled] = useState(true);
   const [emailEnabled, setEmailEnabled] = useState(true);
+  const [gmailReplyMode, setGmailReplyMode] = useState(initialConfig.gmailReplyMode);
 
   useEffect(() => {
     fetch("/api/auth/onboarding")
@@ -36,13 +35,7 @@ export function OnboardingWizard({ initialConfig }: { initialConfig: AgentConfig
 
   async function saveStep(leavingStep: number) {
     try {
-      if (leavingStep === 1) {
-        await fetch("/api/onboarding/channel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channelType: channel }),
-        });
-      } else if (leavingStep === 2) {
+      if (leavingStep === 2) {
         await fetch("/api/agent/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -58,7 +51,7 @@ export function OnboardingWizard({ initialConfig }: { initialConfig: AgentConfig
           fetch("/api/notifications/rules", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ slack: slackEnabled, email: emailEnabled }),
+            body: JSON.stringify({ email: emailEnabled }),
           }),
         ]);
       }
@@ -89,6 +82,23 @@ export function OnboardingWizard({ initialConfig }: { initialConfig: AgentConfig
     router.refresh();
   }
 
+  // Self-saves immediately (same pattern as the Gmail/WhatsApp cards inside Step 1)
+  // rather than waiting for "Continue" — reuses the existing full-object PUT
+  // /api/agent/config already wired for Step 2, just with the wizard's current
+  // in-progress state so an earlier, unsaved Step 2/3 edit is never clobbered.
+  async function saveGmailReplyMode(mode: "auto_send" | "review_first") {
+    setGmailReplyMode(mode);
+    try {
+      await fetch("/api/agent/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...initialConfig, qualifyingQuestions: questions, calendlyUrl, gmailReplyMode: mode }),
+      });
+    } catch {
+      // best-effort, same as saveStep — the toggle still reflects the click locally
+    }
+  }
+
   if (!loaded) return null;
 
   return (
@@ -104,14 +114,12 @@ export function OnboardingWizard({ initialConfig }: { initialConfig: AgentConfig
       </div>
 
       <div className="rounded-2xl border border-line bg-surface p-8">
-        {step === 1 && <Step1ConnectChannel value={channel} onChange={setChannel} />}
+        {step === 1 && <Step1ConnectChannel gmailReplyMode={gmailReplyMode} onGmailReplyModeChange={saveGmailReplyMode} />}
         {step === 2 && <Step2QualifyingQuestions questions={questions} onChange={setQuestions} />}
         {step === 3 && (
           <Step3Notifications
             calendlyUrl={calendlyUrl}
             onCalendlyChange={setCalendlyUrl}
-            slackEnabled={slackEnabled}
-            onSlackChange={setSlackEnabled}
             emailEnabled={emailEnabled}
             onEmailChange={setEmailEnabled}
           />

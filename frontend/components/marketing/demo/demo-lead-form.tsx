@@ -11,9 +11,11 @@ import { Send } from "lucide-react";
 export function DemoLeadForm({
   onSubmit,
   submitting,
+  submitLabel = "Submit a fake lead",
 }: {
   onSubmit: (data: DemoLeadInput) => void;
   submitting?: boolean;
+  submitLabel?: string;
 }) {
   const {
     register,
@@ -47,7 +49,7 @@ export function DemoLeadForm({
       </div>
       <Button type="submit" disabled={submitting} className="self-start">
         <Send className="h-4 w-4" />
-        Submit a fake lead
+        {submitLabel}
       </Button>
     </form>
   );

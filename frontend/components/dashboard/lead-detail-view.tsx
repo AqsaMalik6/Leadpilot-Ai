@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Building2, Gauge, Sparkles, Clock, Check, XCircle, FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Building2, Gauge, Sparkles, Clock, Check, XCircle, FileText, ThumbsUp, ThumbsDown, AlertTriangle, NotebookPen } from "lucide-react";
 import { LiveTranscript } from "@/components/shared/live-transcript";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import {
   useLeadActions,
   useProposal,
   useSetLeadOutcome,
+  useSetMeetingTranscript,
   useUpdateLeadStatus,
 } from "@/hooks/use-leads";
 import { toast } from "@/components/ui/use-toast";
@@ -102,6 +103,97 @@ function PipelineStepper({ lead }: { lead: Lead }) {
             <Check className="h-4 w-4 shrink-0" />
             <span>Deal won — full pipeline completed.</span>
           </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// "Meeting ended, what's the outcome?" — meetingEndedPendingOutcome is computed
+// server-side (app/routers/leads.py's _meeting_ended_pending_outcome) from the real
+// scheduled meeting time + duration (set when a Calendly booking is approved on the
+// dashboard's Schedule page), not a stored flag, so it's always current on load.
+function MeetingEndedBanner({ lead }: { lead: Lead }) {
+  const generate = useGenerateProposal(lead.id);
+  const setOutcome = useSetLeadOutcome(lead.id);
+
+  if (!lead.meetingEndedPendingOutcome) return null;
+
+  return (
+    <Card className="border-amber-300 bg-amber-50">
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-medium text-ink-950">Meeting ended — what's the outcome?</p>
+            <p className="text-sm text-slate-600">
+              The scheduled meeting with {lead.name} has passed. Generate a proposal to move forward, or reject this lead.
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            disabled={generate.isPending}
+            onClick={() =>
+              generate.mutate(undefined, { onSuccess: () => toast({ title: "Proposal drafted", description: "Review it below." }) })
+            }
+          >
+            {generate.isPending ? "Drafting…" : "Generate proposal"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={setOutcome.isPending}
+            onClick={() =>
+              setOutcome.mutate(
+                { outcome: "lost", reason: "Rejected after meeting" },
+                { onSuccess: () => toast({ title: "Lead rejected", description: "A rejection email was sent." }) },
+              )
+            }
+          >
+            Reject this lead
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// No call-recording/transcription integration exists — a human pastes notes here after
+// a real (verbal/video) meeting, and the proposal generator reads it so the draft is
+// grounded in what was actually discussed, not just the pre-meeting qualification chat.
+function MeetingTranscriptCard({ lead }: { lead: Lead }) {
+  const [transcript, setTranscript] = useState(lead.meetingTranscript ?? "");
+  const [dirty, setDirty] = useState(false);
+  const save = useSetMeetingTranscript(lead.id);
+
+  if (!PROPOSAL_ELIGIBLE_STAGES.has(lead.pipelineStage)) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <NotebookPen className="h-4 w-4 text-signal-600" /> Meeting transcript / notes
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <p className="text-xs text-slate-500">
+          No call recording is captured automatically — paste notes or a transcript from the meeting here so the proposal reflects what was
+          actually discussed.
+        </p>
+        <Textarea
+          value={transcript}
+          onChange={(e) => { setTranscript(e.target.value); setDirty(true); }}
+          rows={6}
+          placeholder="Paste meeting notes or a transcript here…"
+        />
+        {dirty && (
+          <Button
+            size="sm"
+            disabled={save.isPending}
+            onClick={() => save.mutate(transcript, { onSuccess: () => { setDirty(false); toast({ title: "Meeting notes saved" }); } })}
+          >
+            {save.isPending ? "Saving…" : "Save notes"}
+          </Button>
         )}
       </CardContent>
     </Card>
@@ -259,6 +351,7 @@ const ACTION_TYPE_LABELS: Record<AgentActionType, string> = {
   notified_owner: "Notified owner",
   updated_pipeline_stage: "Pipeline updated",
   manual_override: "Manual override",
+  recorded_qualification: "Recorded qualification",
 };
 
 export function LeadDetailView({ id }: { id: string }) {
@@ -323,6 +416,7 @@ export function LeadDetailView({ id }: { id: string }) {
       </div>
 
       <PipelineStepper lead={lead} />
+      <MeetingEndedBanner lead={lead} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -336,6 +430,7 @@ export function LeadDetailView({ id }: { id: string }) {
 
         <div className="space-y-6">
           <ProposalCard lead={lead} />
+          <MeetingTranscriptCard lead={lead} />
 
           <Card>
             <CardHeader>

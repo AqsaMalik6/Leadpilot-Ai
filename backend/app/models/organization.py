@@ -27,3 +27,4 @@ class Organization(Base, UUIDPk, Timestamped):
     branding_config: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     users: Mapped[list["User"]] = relationship(back_populates="organization")  # noqa: F821
+    outbound_leads: Mapped[list["OutboundLead"]] = relationship("OutboundLead", back_populates="organization")

@@ -13,5 +13,10 @@ __pycache__/
 venv/
 .venv/
 
+# whatsapp_sidecar/ is a Node subproject (SKILL-MULTI-TENANT-CONNECT.md §3) — its
+# own dependencies/logs, never committed, same as everything else here
+node_modules/
+*.log
+
 # OS
 .DS_Store

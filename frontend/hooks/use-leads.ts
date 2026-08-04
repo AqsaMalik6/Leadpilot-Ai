@@ -45,6 +45,19 @@ export function useLeadActions(id: string) {
   });
 }
 
+export function useDeleteLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/leads/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete lead");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+    },
+  });
+}
+
 export function useUpdateLeadStatus() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -131,6 +144,20 @@ export function useSetLeadOutcome(id: string) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outcome, reason }),
+      });
+    },
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetMeetingTranscript(id: string) {
+  const invalidate = useInvalidateLead(id);
+  return useMutation({
+    mutationFn: async (transcript: string) => {
+      await fetch(`/api/leads/${id}/meeting-transcript`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
       });
     },
     onSuccess: invalidate,

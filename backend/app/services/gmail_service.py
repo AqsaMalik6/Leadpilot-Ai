@@ -13,7 +13,11 @@ from app.models.gmail import GmailAccount
 
 logger = logging.getLogger("leadpilot.gmail")
 
-GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+# Minimal scopes only — readonly (list/read messages, getProfile, history.list) + send
+# (messages.send). Nothing here needs gmail.modify (labels, delete, trash) — narrower
+# scopes mean a shorter, less alarming consent screen for pilot users, and less to
+# eventually justify in Google's app-verification review.
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"]
 
 # Guarded import: google-api-python-client/google-auth-oauthlib are real dependencies
 # (requirements.txt) but this module must never crash app startup just because they
@@ -62,7 +66,23 @@ async def refresh_and_store_if_needed(account: GmailAccount, db) -> Credentials:
 
     creds = _credentials_from_account(account)
     if creds.refresh_token:
-        creds.refresh(GoogleAuthRequest())
+        try:
+            creds.refresh(GoogleAuthRequest())
+        except Exception as exc:
+            # A refresh failure here means the token is genuinely dead (revoked from
+            # Google's side, password changed, app access removed, etc.) — not a
+            # transient network blip, which google-auth's own internal retry already
+            # absorbs before raising. Stop polling this account and surface it as a
+            # real, visible "Reconnect Needed" state rather than silently no-oping on
+            # every cycle forever (see app/jobs/gmail_poll.py's caller).
+            account.is_active = False
+            account.status = "reconnect_needed"
+            account.last_status_message = f"Gmail token refresh failed — please reconnect: {exc}"
+            await db.commit()
+            from app.services.notification_service import notify_gmail_reconnect_needed
+
+            await notify_gmail_reconnect_needed(account.organization_id, account.email_address)
+            raise
         account.oauth_tokens_encrypted = encrypt_credentials(json.dumps({"token": creds.token, "refresh_token": creds.refresh_token}))
         await db.commit()
     return creds
@@ -127,14 +147,33 @@ def parse_message(message: dict) -> dict:
     from_name = (match.group(1).strip() if match and match.group(1) else from_header).strip()
     from_email = match.group(2) if match else from_header
 
-    def _extract_text(payload: dict) -> str:
-        if payload.get("mimeType") == "text/plain" and "data" in payload.get("body", {}):
+    def _extract_by_mime(payload: dict, mime_type: str) -> str:
+        if payload.get("mimeType") == mime_type and "data" in payload.get("body", {}):
             return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
         for part in payload.get("parts", []):
-            text = _extract_text(part)
+            text = _extract_by_mime(part, mime_type)
             if text:
                 return text
         return ""
+
+    def _html_to_text(html: str) -> str:
+        import html as html_module
+
+        # Deliberately not a real HTML parser — this only needs to turn Calendly's
+        # (and similar) notification emails' "Label:\nvalue" layout into plain text
+        # well enough for calendly_email_parser.py's regexes to match, not to render
+        # arbitrary HTML correctly.
+        text = re.sub(r"<(br|p|div|tr|li)[^>]*>", "\n", html, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = html_module.unescape(text)
+        return re.sub(r"[ \t]+", " ", text)
+
+    def _extract_text(payload: dict) -> str:
+        plain = _extract_by_mime(payload, "text/plain")
+        if plain:
+            return plain
+        html = _extract_by_mime(payload, "text/html")
+        return _html_to_text(html) if html else ""
 
     return {
         "from_email": from_email,
@@ -142,6 +181,7 @@ def parse_message(message: dict) -> dict:
         "subject": headers.get("subject", ""),
         "text": _extract_text(message.get("payload", {})).strip(),
         "thread_id": message.get("threadId"),
+        "message_id": message.get("id"),
     }
 
 

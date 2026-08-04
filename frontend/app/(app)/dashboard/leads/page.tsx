@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
-import { useLeads } from "@/hooks/use-leads";
+import { Search, Trash2 } from "lucide-react";
+import { useDeleteLead, useLeads } from "@/hooks/use-leads";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,6 +11,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 import { formatDuration, formatDate } from "@/lib/utils";
 import type { Channel, LeadStatus } from "@/lib/schema";
 import { Inbox } from "lucide-react";
@@ -25,6 +27,17 @@ export default function LeadsPage() {
     channel: channel === "all" ? undefined : channel,
     search: search || undefined,
   });
+  const deleteLead = useDeleteLead();
+
+  function handleDelete(id: string, name: string) {
+    if (!window.confirm(`End this conversation with ${name}? This permanently deletes the lead and its whole chat history — a new message from them will start a fresh lead.`)) {
+      return;
+    }
+    deleteLead.mutate(id, {
+      onSuccess: () => toast({ title: "Lead deleted" }),
+      onError: () => toast({ title: "Couldn't delete lead", variant: "destructive" }),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -93,6 +106,7 @@ export default function LeadsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Response time</TableHead>
                   <TableHead>Received</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -110,6 +124,21 @@ export default function LeadsPage() {
                     </TableCell>
                     <TableCell className="text-slate-500">{formatDuration(lead.responseTimeSeconds)}</TableCell>
                     <TableCell className="text-slate-500">{formatDate(lead.createdAt)}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Delete conversation with ${lead.name}`}
+                        disabled={deleteLead.isPending}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleDelete(lead.id, lead.name);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-slate-400 hover:text-red-600" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

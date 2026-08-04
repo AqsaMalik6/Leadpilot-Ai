@@ -20,14 +20,20 @@ from app.routers import (
     contact,
     demo,
     dashboard,
+    gmail_connect,
+    gmail_pending_replies,
     integrations,
     intake,
     leads,
     notifications,
     onboarding,
     org,
+    schedule,
     team,
     webhooks_calendly,
+    outbound_leads,
+    whatsapp_connect,
+    whatsapp_internal,
 )
 
 settings = get_settings()
@@ -81,3 +87,9 @@ app.include_router(dashboard.router)
 app.include_router(contact.router)
 app.include_router(cms.router)
 app.include_router(webhooks_calendly.router)
+app.include_router(schedule.router)
+app.include_router(gmail_connect.router)
+app.include_router(gmail_pending_replies.router)
+app.include_router(whatsapp_connect.router)
+app.include_router(whatsapp_internal.router)
+app.include_router(outbound_leads.router)

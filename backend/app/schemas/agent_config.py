@@ -14,6 +14,9 @@ class QualifyingQuestion(CamelModel):
     required: bool
 
 
+GmailReplyMode = Literal["auto_send", "review_first"]
+
+
 class AgentConfig(CamelModel):
     persona: str
     qualifying_questions: list[QualifyingQuestion] = Field(min_length=1, max_length=8)
@@ -21,6 +24,7 @@ class AgentConfig(CamelModel):
     calendly_url: str | None = None
     guardrails: list[str]
     active: bool
+    gmail_reply_mode: GmailReplyMode = "auto_send"
 
 
 class AgentConfigUpdate(CamelModel):
@@ -30,3 +34,4 @@ class AgentConfigUpdate(CamelModel):
     calendly_url: str | None = None
     guardrails: list[str]
     active: bool
+    gmail_reply_mode: GmailReplyMode = "auto_send"

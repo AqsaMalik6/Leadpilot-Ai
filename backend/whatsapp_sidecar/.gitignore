@@ -1,0 +1,6 @@
+# secrets — real shared secret lives here, never commit
+.env
+!.env.example
+
+node_modules/
+*.log

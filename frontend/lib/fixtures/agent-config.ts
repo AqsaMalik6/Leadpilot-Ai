@@ -19,6 +19,7 @@ const raw: AgentConfig = {
     "Never claim to be a human sales rep",
   ],
   active: true,
+  gmailReplyMode: "auto_send",
 };
 
 export const agentConfigFixture = AgentConfigSchema.parse(raw);

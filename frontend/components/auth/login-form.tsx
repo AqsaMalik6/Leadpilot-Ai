@@ -37,7 +37,11 @@ export function LoginForm() {
       );
       return;
     }
-    const next = searchParams.get("next") ?? "/dashboard";
+    const plan = searchParams.get("plan");
+    // A plan param means they arrived from pricing but already had an account —
+    // still show the real checkout confirmation before dropping them at the
+    // dashboard, same as a brand-new signup would get.
+    const next = plan ? `/checkout?plan=${encodeURIComponent(plan)}` : (searchParams.get("next") ?? "/dashboard");
     router.push(next);
     router.refresh();
   }
@@ -71,7 +75,10 @@ export function LoginForm() {
         </form>
         <p className="mt-6 text-center text-sm text-slate-500">
           No account yet?{" "}
-          <Link href="/signup" className="font-medium text-signal-600 hover:underline">
+          <Link
+            href={searchParams.get("plan") ? `/signup?plan=${encodeURIComponent(searchParams.get("plan")!)}` : "/signup"}
+            className="font-medium text-signal-600 hover:underline"
+          >
             Start a free trial
           </Link>
         </p>

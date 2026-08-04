@@ -12,7 +12,9 @@ from app.models.base import Timestamped, UUIDPk
 # "gmail" added per SKILL-DIGITAL-FTE-UPGRADE.md §1 — paired with a raw ALTER TYPE ADD
 # VALUE migration against the three Postgres enum types below (autogenerate can't do it).
 CHANNEL_VALUES = ("website_form", "whatsapp", "email", "gmail")
-SOURCE_VALUES = ("website_form", "whatsapp", "email", "gmail", "demo_sandbox")
+# "outbound" added per SKILL-OUTBOUND.md — marks a Lead promoted from the outbound
+# prospecting table (OSM/Geoapify/GitHub); paired with an ALTER TYPE ADD VALUE migration.
+SOURCE_VALUES = ("website_form", "whatsapp", "email", "gmail", "demo_sandbox", "outbound")
 # Dropped in_progress — not in the frontend's LeadStatusSchema. A mid-conversation lead
 # just stays "new" until the decision node flips it; human takeover lives on
 # conversations.status instead, so it never surfaces on the lead badge.
@@ -77,6 +79,23 @@ class Lead(Base, UUIDPk, Timestamped):
     last_outbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     follow_up_count: Mapped[int] = mapped_column(Integer, default=0)
     next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Set when a CalendlyBookingEvent (app/models/calendly_event.py) is approved — real
+    # meeting time/duration, parsed from Calendly's own Gmail notification since no
+    # public webhook URL exists to receive these directly. Drives the "meeting ended,
+    # what's the outcome?" prompt on the lead detail page (computed reactively in
+    # schemas/lead.py, not a stored flag — see meeting_ended_pending_outcome there).
+    meeting_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    meeting_duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Manually pasted after a real (verbal/video) meeting — there's no call-recording or
+    # transcription integration, so this is a human-entered field the proposal generator
+    # reads to ground the draft in what was actually discussed, not just the pre-meeting
+    # qualification chat.
+    meeting_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Parallels booked_at — needed to time-base a rejected lead's re-engagement window
+    # (follow_up_sweep.py) independently of the generic Timestamped.updated_at, which
+    # changes on any field edit, not specifically a rejection.
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Conversation(Base, UUIDPk, Timestamped):

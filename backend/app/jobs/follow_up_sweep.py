@@ -17,13 +17,17 @@ from app.models.lead import Conversation, Lead, Message
 from app.models.notification import Notification
 from app.services.email_service import send_email
 from app.services.notification_service import _org_owner_email  # reused, see below
-from app.services.whatsapp_service import send_whatsapp_message
+from app.services.whatsapp_service import send_whatsapp_message_for_org
 
 logger = logging.getLogger("leadpilot.jobs.follow_up_sweep")
 
 SWEEP_INTERVAL_SECONDS = 15 * 60
 FOLLOW_UP_AFTER = timedelta(hours=24)
 COLD_AFTER = timedelta(hours=48)
+# Outbound-promoted leads never sent us anything first (last_inbound_at stays null
+# forever unless they reply) — close them out on their own timeline instead of the
+# reply-based one above, per the user's own "1/2 days" instruction.
+CLOSE_OUTBOUND_AFTER = timedelta(days=2)
 
 FOLLOW_UP_MESSAGE = (
     "Hi {name}, just checking in — still interested in moving forward? Happy to answer "
@@ -38,12 +42,51 @@ async def _send_follow_up(lead: Lead) -> str | None:
     not a bug: nothing to silently retry against."""
     text = FOLLOW_UP_MESSAGE.format(name=lead.contact_name)
     if lead.source == "whatsapp" and lead.contact_phone:
-        await send_whatsapp_message(lead.contact_phone, text)
+        await send_whatsapp_message_for_org(lead.organization_id, lead.contact_phone, text)
         return "whatsapp"
     if lead.contact_email:
         await send_email(lead.contact_email, "Following up — LeadPilot", text)
         return "email"
     return None
+
+
+async def _close_stale_outbound_leads(db, now: datetime) -> int:
+    """Outbound-promoted leads we reached out to cold and who never replied at all —
+    distinct from the reply-based follow_up_sweep above, since last_inbound_at is
+    permanently null for these unless they actually write back."""
+    candidates = (
+        await db.execute(
+            select(Lead).where(
+                Lead.source == "outbound",
+                Lead.pipeline_stage.notin_(["won", "lost"]),
+                Lead.last_outbound_at.is_not(None),
+                Lead.last_inbound_at.is_(None),
+            )
+        )
+    ).scalars().all()
+
+    closed = 0
+    for lead in candidates:
+        try:
+            age = now - lead.last_outbound_at.replace(tzinfo=timezone.utc)
+            if age <= CLOSE_OUTBOUND_AFTER:
+                continue
+            lead.status = "rejected"
+            lead.pipeline_stage = "lost"
+            db.add(
+                AgentAction(
+                    lead_id=lead.id,
+                    organization_id=lead.organization_id,
+                    action_type="updated_pipeline_stage",
+                    reasoning=f"No reply to our outbound outreach after {CLOSE_OUTBOUND_AFTER.days} days — closing this conversation",
+                )
+            )
+            closed += 1
+            await db.commit()
+        except Exception:
+            logger.exception("close_stale_outbound_leads failed for lead_id=%s — continuing with the rest", lead.id)
+            await db.rollback()
+    return closed
 
 
 async def follow_up_sweep_once(db) -> dict:
@@ -99,7 +142,9 @@ async def follow_up_sweep_once(db) -> dict:
             logger.exception("follow_up_sweep failed for lead_id=%s — continuing with the rest", lead.id)
             await db.rollback()
 
-    return {"followed_up": followed_up, "marked_cold": marked_cold, "candidates": len(candidates)}
+    closed_outbound = await _close_stale_outbound_leads(db, now)
+
+    return {"followed_up": followed_up, "marked_cold": marked_cold, "closed_outbound": closed_outbound, "candidates": len(candidates)}
 
 
 async def follow_up_sweep_loop() -> None:
@@ -107,7 +152,7 @@ async def follow_up_sweep_loop() -> None:
         try:
             async with SessionLocal() as db:
                 result = await follow_up_sweep_once(db)
-                if result["followed_up"] or result["marked_cold"]:
+                if result["followed_up"] or result["marked_cold"] or result["closed_outbound"]:
                     logger.info("follow_up_sweep: %s", result)
         except asyncio.CancelledError:
             raise

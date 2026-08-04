@@ -8,13 +8,10 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
 import type { Integration } from "@/lib/schema";
 
-const PHASE_2_PROVIDERS = new Set(["slack", "hubspot"]);
-
 export function IntegrationCard({ integration }: { integration: Integration }) {
   const [status, setStatus] = useState(integration.status);
   const [calendlyUrl, setCalendlyUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const isPhase2 = PHASE_2_PROVIDERS.has(integration.provider);
 
   async function disconnect() {
     setBusy(true);
@@ -51,11 +48,34 @@ export function IntegrationCard({ integration }: { integration: Integration }) {
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-base font-semibold text-ink-950">{integration.label}</h3>
-            <Badge variant={status === "connected" ? "qualified" : status === "error" ? "rejected" : "neutral"}>
-              {status === "connected" ? "Connected" : status === "error" ? "Error" : isPhase2 ? "Coming soon" : "Not connected"}
+            <Badge
+              variant={
+                status === "connected" ? "qualified" : status === "error" || status === "reconnect_needed" ? "rejected" : "neutral"
+              }
+            >
+              {status === "connected"
+                ? "Connected"
+                : status === "reconnect_needed"
+                  ? "Reconnect needed"
+                  : status === "error"
+                    ? "Error"
+                    : "Not connected"}
             </Badge>
           </div>
           <p className="mt-1 text-sm text-slate-500">{integration.description}</p>
+          {integration.provider === "gmail" && status === "connected" && (
+            <p className="mt-1 text-xs text-slate-400">
+              {integration.lastSyncedAt ? `Last synced: ${new Date(integration.lastSyncedAt).toLocaleString()}` : "Not yet synced"}
+            </p>
+          )}
+          {integration.provider === "gmail" && status === "reconnect_needed" && (
+            <p className="mt-1 text-xs text-red-700">
+              {integration.lastStatusMessage ?? "LeadPilot lost access to this inbox — reconnect to keep replying to real leads."}
+            </p>
+          )}
+          {integration.provider === "gmail" && status === "not_connected" && (
+            <p className="mt-1 text-xs text-slate-400">We only request read + send access. Encrypted. Revoke anytime.</p>
+          )}
           {status !== "connected" && integration.provider === "calendly" && (
             <div className="mt-3 flex items-center gap-2">
               <Input
@@ -74,9 +94,17 @@ export function IntegrationCard({ integration }: { integration: Integration }) {
           <Button variant="outline" size="sm" disabled={busy} onClick={disconnect}>
             Disconnect
           </Button>
+        ) : integration.provider === "gmail" ? (
+          // Real top-level navigation, not a fetch — the eventual Google -> backend ->
+          // here redirect chain only works as real browser navigations throughout.
+          // Reconnecting re-runs the same /start flow — prompt=consent (gmail_connect.py)
+          // always issues a fresh refresh_token, which is exactly what a dead one needs.
+          <Button variant="primary" size="sm" onClick={() => { window.location.href = "/api/integrations/gmail/connect"; }}>
+            {status === "reconnect_needed" ? "Reconnect Gmail" : "Connect Gmail"}
+          </Button>
         ) : (
           integration.provider !== "calendly" && (
-            <Button variant="primary" size="sm" disabled={isPhase2} title={isPhase2 ? "Coming in a later phase" : undefined}>
+            <Button variant="primary" size="sm">
               Connect
             </Button>
           )

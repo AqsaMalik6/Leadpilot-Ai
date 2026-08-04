@@ -34,6 +34,12 @@ export async function getLeadById(id: string): Promise<Lead | null> {
   return LeadSchema.parse(data.lead);
 }
 
+export async function deleteLead(id: string): Promise<{ ok: true }> {
+  const res = await backendFetch(`/api/leads/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete lead ${id} (${res.status})`);
+  return { ok: true };
+}
+
 export async function updateLeadStatus(id: string, status: LeadStatus): Promise<{ ok: true }> {
   const res = await backendFetch(`/api/leads/${id}/status`, {
     method: "POST",
@@ -92,5 +98,18 @@ export async function setLeadOutcome(id: string, outcome: Outcome, reason?: stri
     body: JSON.stringify({ outcome, reason }),
   });
   if (!res.ok) throw new Error(`Failed to set outcome for lead ${id} (${res.status})`);
+  return { ok: true };
+}
+
+// No call-recording/transcription integration exists — this is a human-pasted
+// transcript/notes field the proposal generator reads (see backend's
+// proposal_service.py) to ground the draft in what was actually discussed live.
+export async function setMeetingTranscript(id: string, transcript: string): Promise<{ ok: true }> {
+  const res = await backendFetch(`/api/leads/${id}/meeting-transcript`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript }),
+  });
+  if (!res.ok) throw new Error(`Failed to save meeting transcript for lead ${id} (${res.status})`);
   return { ok: true };
 }

@@ -22,6 +22,7 @@ ACTION_TYPE_VALUES = (
     "updated_pipeline_stage",
     "manual_override",
     "recorded_qualification",
+    "outbound_outreach",
 )
 
 

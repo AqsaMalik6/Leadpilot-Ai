@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,29 +8,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.encryption import encrypt_credentials
 from app.db import get_db
 from app.dependencies import get_current_user
+from app.models.gmail import GmailAccount
 from app.models.integration import Integration
 from app.models.lead import LeadChannel
 from app.models.user import User
+from app.models.whatsapp import WhatsAppAccount
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 _CHANNEL_LABELS = {
-    "website_form": ("Website form", "Embed a snippet on your site to route form submissions straight to LeadPilot."),
     "whatsapp": ("WhatsApp Business", "Reply to inbound WhatsApp inquiries the moment they land."),
-    "email": ("Email inbox", "Forward or connect a shared inbox for LeadPilot to monitor and reply from."),
 }
+# "email" (a generic forward-to-webhook inbox) predates the real Gmail OAuth connect
+# below and is superseded by it — no connect flow creates this channel type anymore.
+# "website_form" removed per product owner: keep only Gmail, WhatsApp, Calendly as
+# connectable options — the webhook itself still exists server-side (a website-form
+# lead still becomes a real Lead if one ever arrives at the intake endpoint), it's
+# just no longer surfaced as a UI option anywhere.
+_SUPERSEDED_CHANNEL_TYPES = {"email", "website_form"}
+_GMAIL_LABEL = ("Gmail", "Connect your own Gmail inbox so LeadPilot can read and reply to your real leads.")
+_WHATSAPP_ACCOUNT_LABEL = ("WhatsApp (QR connect)", "Scan a QR code to link your own WhatsApp number — no Meta Business account needed.")
+# Slack/HubSpot removed per product owner: the dashboard's Integrations page should
+# only offer connections that actually do something today (Gmail, WhatsApp, Calendly)
+# — no "Coming soon" placeholders that can't be clicked into working.
 _PROVIDER_LABELS = {
     "calendly": ("Calendly", "Let qualified leads book directly onto your team's calendar."),
-    "slack": ("Slack", "Get a Slack alert the moment a lead is qualified or booked."),
-    "hubspot": ("HubSpot CRM", "Sync qualified leads and transcripts directly into HubSpot."),
 }
 
 
 @router.get("")
 async def list_integrations(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Composes lead_channels (website_form/whatsapp/email) + integrations
-    (calendly/slack/hubspot) into the one flat list the frontend's
-    /dashboard/integrations page renders (SKILL-BACKEND.md §1 merged-view rule)."""
+    (calendly) + the Gmail/WhatsApp-QR connect tables into the one flat list the
+    frontend's /dashboard/integrations page renders (SKILL-BACKEND.md §1 merged-view
+    rule, extended by SKILL-MULTI-TENANT-CONNECT.md §3)."""
     channels = (
         await db.execute(select(LeadChannel).where(LeadChannel.organization_id == user.organization_id))
     ).scalars().all()
@@ -39,6 +51,8 @@ async def list_integrations(user: User = Depends(get_current_user), db: AsyncSes
 
     result = []
     for c in channels:
+        if c.channel_type in _SUPERSEDED_CHANNEL_TYPES:
+            continue
         label, description = _CHANNEL_LABELS.get(c.channel_type, (c.channel_type, ""))
         result.append(
             {
@@ -68,8 +82,7 @@ async def list_integrations(user: User = Depends(get_current_user), db: AsyncSes
                 "configHref": "/dashboard/integrations",
             }
         )
-    # Providers with no row yet still show up as "not_connected" placeholders — no
-    # extra code needed once slack/hubspot OAuth (Phase 2) actually lands.
+    # Providers with no row yet still show up as "not_connected" placeholders.
     for provider, (label, description) in _PROVIDER_LABELS.items():
         if provider not in connected_providers:
             result.append(
@@ -84,6 +97,52 @@ async def list_integrations(user: User = Depends(get_current_user), db: AsyncSes
                     "configHref": "/dashboard/integrations",
                 }
             )
+
+    # SKILL-MULTI-TENANT-CONNECT.md — Gmail/WhatsApp live in their own tables (not
+    # lead_channels/integrations), since both carry OAuth/session state those two
+    # generic tables were never shaped for. Surfaced here as first-class entries in
+    # the same merged list the dashboard already renders.
+    gmail_account = (
+        await db.execute(select(GmailAccount).where(GmailAccount.organization_id == user.organization_id))
+    ).scalar_one_or_none()
+    gmail_label, gmail_description = _GMAIL_LABEL
+    if gmail_account and gmail_account.is_active:
+        gmail_status = "connected"
+    elif gmail_account and gmail_account.status == "reconnect_needed":
+        gmail_status = "reconnect_needed"
+    else:
+        gmail_status = "not_connected"
+    result.append(
+        {
+            "id": f"gmail_{gmail_account.id}" if gmail_account else "gmail_placeholder",
+            "provider": "gmail",
+            "label": gmail_label,
+            "description": gmail_description if not gmail_account else f"Connected: {gmail_account.email_address}",
+            "logoSrc": None,
+            "status": gmail_status,
+            "connectedAt": gmail_account.created_at.isoformat() if (gmail_account and gmail_account.is_active) else None,
+            "configHref": "/dashboard/integrations",
+            "lastSyncedAt": gmail_account.last_synced_at.isoformat() if (gmail_account and gmail_account.last_synced_at) else None,
+            "lastStatusMessage": gmail_account.last_status_message if gmail_account else None,
+        }
+    )
+
+    wa_account = (
+        await db.execute(select(WhatsAppAccount).where(WhatsAppAccount.organization_id == user.organization_id))
+    ).scalar_one_or_none()
+    wa_label, wa_description = _WHATSAPP_ACCOUNT_LABEL
+    result.append(
+        {
+            "id": f"wa_{wa_account.id}" if wa_account else "wa_placeholder",
+            "provider": "whatsapp_qr",
+            "label": wa_label,
+            "description": wa_description if not (wa_account and wa_account.status == "connected") else f"Connected: {wa_account.phone_number}",
+            "logoSrc": None,
+            "status": wa_account.status if wa_account else "not_connected",
+            "connectedAt": wa_account.last_connected_at.isoformat() if (wa_account and wa_account.last_connected_at) else None,
+            "configHref": "/dashboard/integrations",
+        }
+    )
 
     return {"integrations": result}
 
@@ -116,18 +175,43 @@ async def connect_calendly(payload: dict, user: User = Depends(get_current_user)
     return {"ok": True}
 
 
-@router.post("/slack/connect", status_code=501)
-async def connect_slack():
-    raise HTTPException(status_code=501, detail="Slack OAuth is Phase 2 — see SKILL-BACKEND.md §2.6")
-
-
-@router.post("/hubspot/connect", status_code=501)
-async def connect_hubspot():
-    raise HTTPException(status_code=501, detail="HubSpot OAuth is Phase 2 — see SKILL-BACKEND.md §2.6")
-
-
 @router.delete("/{integration_id}")
 async def delete_integration(integration_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if integration_id.startswith("gmail_"):
+        gmail_account = (
+            await db.execute(select(GmailAccount).where(GmailAccount.organization_id == user.organization_id))
+        ).scalar_one_or_none()
+        if gmail_account:
+            # Flips the exact flag gmail_poll_once filters on (`where(is_active.is_(True))`)
+            # — the poll loop simply stops picking this account up next cycle.
+            gmail_account.is_active = False
+            await db.commit()
+        return {"ok": True}
+
+    if integration_id.startswith("wa_"):
+        wa_account = (
+            await db.execute(select(WhatsAppAccount).where(WhatsAppAccount.organization_id == user.organization_id))
+        ).scalar_one_or_none()
+        if wa_account:
+            import httpx
+
+            from app.config import get_settings
+
+            settings = get_settings()
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    await client.post(
+                        f"{settings.whatsapp_sidecar_url}/sessions/{user.organization_id}/logout",
+                        headers={"X-Sidecar-Secret": settings.whatsapp_sidecar_shared_secret},
+                    )
+            except httpx.HTTPError:
+                logging.getLogger("leadpilot.integrations").warning("WhatsApp sidecar unreachable during disconnect — clearing DB state anyway")
+            wa_account.status = "disconnected"
+            wa_account.auth_state_encrypted = None
+            wa_account.qr_code_data_url = None
+            await db.commit()
+        return {"ok": True}
+
     raw_id = integration_id.split("_", 1)[-1]
     integration = (
         await db.execute(select(Integration).where(Integration.id == raw_id, Integration.organization_id == user.organization_id))

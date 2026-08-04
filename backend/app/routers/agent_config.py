@@ -22,6 +22,7 @@ def _to_schema(config: AgentConfig) -> AgentConfigSchema:
         calendly_url=config.calendly_link,
         guardrails=config.guardrails,
         active=config.active,
+        gmail_reply_mode=config.gmail_reply_mode,
     )
 
 
@@ -49,6 +50,7 @@ async def update_config(payload: AgentConfigUpdate, user: User = Depends(get_cur
     config.calendly_link = payload.calendly_url
     config.guardrails = payload.guardrails
     config.active = payload.active
+    config.gmail_reply_mode = payload.gmail_reply_mode
     await db.commit()
     await db.refresh(config)
     return _to_schema(config)

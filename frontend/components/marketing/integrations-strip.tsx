@@ -72,6 +72,10 @@ const PROVIDER_ICON: Record<IntegrationProvider, ElementType> = {
   whatsapp: WhatsAppMark,
   slack: SlackMark,
   hubspot: HubSpotMark,
+  // Not in this marketing marquee's fixture data today — present only so this Record
+  // stays exhaustive against IntegrationProviderSchema (SKILL-MULTI-TENANT-CONNECT.md).
+  gmail: Mail,
+  whatsapp_qr: WhatsAppMark,
 };
 
 const MARQUEE_ITEMS = [...integrationsFixture, ...integrationsFixture];

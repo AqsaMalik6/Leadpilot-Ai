@@ -1,12 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import ARRAY, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 from app.models.base import Timestamped, UUIDPk
+
+# "auto_send" (default — matches every other channel's existing behavior: the agent's
+# reply goes out immediately) vs "review_first" (Gmail-specific: gmail_poll.py holds
+# the drafted reply as a GmailPendingReply row and notifies the owner instead of
+# sending, until POST /api/gmail/pending-replies/{id}/approve is called).
+GMAIL_REPLY_MODE_VALUES = ("auto_send", "review_first")
 
 # qualifying_questions item shape (jsonb): {id, field, prompt, required}
 # field-for-field match to the frontend's QualifyingQuestionSchema — see SKILL-BACKEND.md §1
@@ -44,6 +50,7 @@ class AgentConfig(Base, UUIDPk, Timestamped):
     calendly_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
     system_prompt_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    gmail_reply_mode: Mapped[str] = mapped_column(Enum(*GMAIL_REPLY_MODE_VALUES, name="gmail_reply_mode"), default="auto_send")
     # {"email": {"new_lead": bool, "qualified": bool, "booked": bool, "rejected": bool}, "slack": {...}}
     # Slack side is stored but not enforced yet — no real Slack connection exists (Phase 2).
     notification_rules: Mapped[dict] = mapped_column(JSONB, default=dict)

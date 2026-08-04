@@ -15,3 +15,6 @@ export * from "./org";
 export * from "./notification";
 export * from "./agent-action";
 export * from "./proposal";
+export * from "./gmail-pending-reply";
+export * from "./schedule";
+export * from "./outbound-lead";

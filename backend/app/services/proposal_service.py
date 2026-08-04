@@ -53,6 +53,13 @@ async def generate_proposal_draft(db: AsyncSession, lead: Lead) -> tuple[str, st
         ).scalars().all()
         transcript_text = "\n".join(f"{m.role}: {m.content}" for m in messages) or "not available"
 
+    meeting_transcript_section = (
+        f"\n\nMeeting transcript/notes (this is what was actually discussed live — weigh this "
+        f"MORE heavily than the pre-meeting chat below, since it's the most recent and specific "
+        f"signal of what the client wants):\n{lead.meeting_transcript}"
+        if lead.meeting_transcript
+        else ""
+    )
     facts = (
         f"Contact: {lead.contact_name}\n"
         f"Need: {lead.need or 'see conversation transcript below'}\n"
@@ -61,6 +68,7 @@ async def generate_proposal_draft(db: AsyncSession, lead: Lead) -> tuple[str, st
         f"Budget: {lead.budget or 'see conversation transcript below'}\n"
         f"Suggested plan: {price_line}\n\n"
         f"Conversation transcript:\n{transcript_text}"
+        f"{meeting_transcript_section}"
     )
 
     if not groq_configured():
@@ -83,8 +91,10 @@ async def generate_proposal_draft(db: AsyncSession, lead: Lead) -> tuple[str, st
                     f"You write short, professional B2B sales proposal emails on behalf of {org.name}, "
                     "a company selling an AI sales-agent product. Write a complete proposal email body "
                     "(no subject line, just the body) addressed to the contact by name. Read the conversation "
-                    "transcript to find their actual stated need, timeline, team/lead volume, and budget, and "
-                    "reference those specifics — don't write generically if the transcript has real details. "
+                    "transcript (and the meeting transcript/notes, if provided — that's what was actually "
+                    "discussed live, so prefer it over the pre-meeting chat when they differ) to find their "
+                    "actual stated need, timeline, team/lead volume, and budget, and reference those specifics "
+                    "— don't write generically if real details are available. "
                     "Include: a thank-you for meeting, the scope of work (instant lead response, automatic "
                     "qualification, meeting booking), the suggested pricing plan, and an expected timeline. "
                     "Keep it under 200 words, warm but professional, no markdown formatting."

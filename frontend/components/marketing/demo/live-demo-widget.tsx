@@ -48,7 +48,11 @@ export function LiveDemoWidget({ variant = "full", mode = "public" }: LiveDemoWi
           <Sparkles className="h-4 w-4 text-signal-500" />
           {mode === "onboarding" ? "Send a test lead" : "Submit a sample lead"}
         </div>
-        <DemoLeadForm onSubmit={handleSubmit} submitting={status === "waiting"} />
+        <DemoLeadForm
+          onSubmit={handleSubmit}
+          submitting={status === "waiting"}
+          submitLabel={mode === "onboarding" ? "Send test lead" : undefined}
+        />
         <p className="mt-4 text-xs text-slate-500">
           {mode === "onboarding"
             ? "This is a real lead run through your agent's live configuration — nothing is faked."

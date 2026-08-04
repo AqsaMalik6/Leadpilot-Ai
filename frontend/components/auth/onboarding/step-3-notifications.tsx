@@ -7,15 +7,11 @@ import { Switch } from "@/components/ui/switch";
 export function Step3Notifications({
   calendlyUrl,
   onCalendlyChange,
-  slackEnabled,
-  onSlackChange,
   emailEnabled,
   onEmailChange,
 }: {
   calendlyUrl: string;
   onCalendlyChange: (value: string) => void;
-  slackEnabled: boolean;
-  onSlackChange: (value: boolean) => void;
   emailEnabled: boolean;
   onEmailChange: (value: boolean) => void;
 }) {
@@ -35,13 +31,6 @@ export function Step3Notifications({
             value={calendlyUrl}
             onChange={(e) => onCalendlyChange(e.target.value)}
           />
-        </div>
-        <div className="flex items-center justify-between rounded-lg border border-line p-4">
-          <div>
-            <div className="text-sm font-medium text-ink-950">Slack notifications</div>
-            <div className="text-xs text-slate-500">Alert #sales the moment a lead is qualified or booked.</div>
-          </div>
-          <Switch checked={slackEnabled} onCheckedChange={onSlackChange} />
         </div>
         <div className="flex items-center justify-between rounded-lg border border-line p-4">
           <div>

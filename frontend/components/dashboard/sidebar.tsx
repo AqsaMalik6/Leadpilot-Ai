@@ -11,12 +11,15 @@ import {
   UsersRound,
   CreditCard,
   Settings,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Leads", href: "/dashboard/leads", icon: Users },
+  { label: "Outbound Leads", href: "/dashboard/outbound-leads", icon: Bot },
+  { label: "Schedule", href: "/dashboard/schedule", icon: CalendarClock },
   { label: "Agent", href: "/dashboard/agent", icon: Bot },
   { label: "Integrations", href: "/dashboard/integrations", icon: Plug },
   { label: "Notifications", href: "/dashboard/notifications", icon: Bell },

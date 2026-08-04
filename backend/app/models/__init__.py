@@ -1,14 +1,18 @@
 from app.models.agent_action import AgentAction
 from app.models.agent_config import AgentConfig, AgentConfigHistory
 from app.models.audit import AuditLog
+from app.models.calendly_event import CalendlyBookingEvent
 from app.models.cms import BlogPost, CaseStudy, Comparison, Industry, PricingTier, Testimonial
 from app.models.gmail import GmailAccount
+from app.models.gmail_pending_reply import GmailPendingReply
 from app.models.integration import Integration
 from app.models.lead import Conversation, Lead, LeadChannel, Message
 from app.models.notification import ContactSubmission, Notification
 from app.models.organization import Organization
+from app.models.outbound_lead import OutboundLead
 from app.models.proposal import Proposal
 from app.models.user import Session, User
+from app.models.whatsapp import WhatsAppAccount
 
 __all__ = [
     "Organization",
@@ -24,6 +28,7 @@ __all__ = [
     "ContactSubmission",
     "Integration",
     "AuditLog",
+    "CalendlyBookingEvent",
     "Industry",
     "Comparison",
     "Testimonial",
@@ -32,5 +37,8 @@ __all__ = [
     "BlogPost",
     "AgentAction",
     "GmailAccount",
+    "GmailPendingReply",
+    "OutboundLead",
     "Proposal",
+    "WhatsAppAccount",
 ]

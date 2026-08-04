@@ -23,3 +23,4 @@ python-multipart==0.0.20
 # SKILL-DIGITAL-FTE-UPGRADE.md §2 — Gmail integration (installed-app OAuth flow + History API polling)
 google-api-python-client==2.154.0
 google-auth-oauthlib==1.2.1
+beautifulsoup4==4.12.3
