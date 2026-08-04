@@ -101,7 +101,16 @@ async def search_outbound_leads(req: SearchRequest, user: User = Depends(get_cur
                 # catches e.g. a literal company name typed into the search box.
                 results = await find_tech_leads("org_lookup", {"name": req.category}, org_id, db, limit=limit, location=req.location)
         else:
-            results = await find_local_businesses(req.category, req.location, org_id, db, limit=limit)
+            try:
+                results = await find_local_businesses(req.category, req.location, org_id, db, limit=limit)
+            except ValueError:
+                raise  # bad location (geocoding failed) — a real 400, not an upstream flake
+            except Exception:
+                # OSM's free Overpass instance genuinely goes down/overloaded sometimes
+                # (confirmed live: repeated 504s) — that shouldn't kill the whole search
+                # when Geoapify is a second, independent free source that can still work.
+                logger.warning("OSM search failed (category=%r, location=%r) — falling back to Geoapify", req.category, req.location, exc_info=True)
+                results = []
             if len(results) < min(_MIN_RESULTS_BEFORE_FALLBACK, limit):
                 geoapify_results = await find_places_geoapify(req.category, req.location, org_id, db, limit=limit - len(results))
                 results = results + geoapify_results

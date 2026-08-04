@@ -11,6 +11,10 @@ from app.models.outbound_lead import OutboundLead
 from app.tools.common import dedupe_new_records, existing_contact_keys, fetch_email_from_website, geocode_location, matching_osm_tags
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# The main free instance above goes down/overloaded often enough in practice (seen
+# live, twice) that a second independent public mirror is worth trying before giving
+# up entirely and forcing the caller to fall back to Geoapify.
+OVERPASS_MIRROR_URL = "https://overpass.kumi.systems/api/interpreter"
 
 
 def _build_overpass_query(category: str, bbox: dict[str, float]) -> str:
@@ -56,6 +60,30 @@ def _build_overpass_query(category: str, bbox: dict[str, float]) -> str:
     """
 
 
+async def _query_overpass(query: str) -> dict[str, Any]:
+    """POSTs to the primary Overpass instance with a short retry on 429/504, then — only
+    if the primary is still down after those retries — one shot at an independent mirror
+    before giving up. Raises the last response's HTTPStatusError if both are down, which
+    the caller (find_local_businesses) lets propagate so search_outbound_leads can fall
+    back to Geoapify instead of the whole request failing."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = None
+        for attempt in range(3):
+            resp = await client.post(OVERPASS_URL, data={"data": query}, headers={"User-Agent": "LeadPilot/1.0"})
+            if resp.status_code not in (429, 504):
+                resp.raise_for_status()
+                return resp.json()
+            if attempt < 2:
+                await asyncio.sleep(2 * (attempt + 1))
+
+        mirror_resp = await client.post(OVERPASS_MIRROR_URL, data={"data": query}, headers={"User-Agent": "LeadPilot/1.0"})
+        if mirror_resp.status_code not in (429, 504):
+            mirror_resp.raise_for_status()
+            return mirror_resp.json()
+
+        resp.raise_for_status()  # both down — surface the primary's error
+
+
 async def find_local_businesses(
     category: str, location: str, organization_id: str, db: AsyncSession, limit: int = 15, website_email_limit: int = 5
 ) -> list[dict[str, Any]]:
@@ -64,18 +92,7 @@ async def find_local_businesses(
     coords = await geocode_location(location)
 
     query = _build_overpass_query(category, coords["bbox"])
-    async with httpx.AsyncClient(timeout=30) as client:
-        # The free public Overpass instance routinely 504s (overloaded) or 429s (rate
-        # limited) — independent of whether the query itself is fine. A short retry
-        # clears the large majority of these rather than surfacing a transient hiccup
-        # as "the search is broken."
-        for attempt in range(3):
-            resp = await client.post(OVERPASS_URL, data={"data": query}, headers={"User-Agent": "LeadPilot/1.0"})
-            if resp.status_code not in (429, 504) or attempt == 2:
-                break
-            await asyncio.sleep(2 * (attempt + 1))
-        resp.raise_for_status()
-        data = resp.json()
+    data = await _query_overpass(query)
 
     results: list[dict[str, Any]] = []
     email_targets: list[dict[str, Any]] = []
